@@ -1,63 +1,52 @@
 "use client";
-import Navbar from "@/components/Navbar";
-export default function ProfilePage() {
-  return (
-    <>
-      <Navbar />
-      {/* rest of profile page */}
-    </>
-  );
-}
-
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { auth } from "@/lib/firebase";
 import { onAuthStateChanged, signOut } from "firebase/auth";
-
+import Link from "next/link";
 export default function DashboardPage() {
   const router = useRouter();
   const [user, setUser] = useState(null);
-
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      if (!currentUser) {
+    const unsub = onAuthStateChanged(auth, (u) => {
+      if (!u) {
         router.push("/login");
       } else {
-        setUser(currentUser);
+        setUser(u);
       }
     });
 
-    return () => unsubscribe();
+    return () => unsub();
   }, [router]);
 
   if (!user) return null;
 
   return (
-    <main className="min-h-screen bg-gray-50 px-6 py-16">
-      <div className="max-w-3xl mx-auto bg-white border border-gray-200 rounded-lg p-8">
+    <main className="min-h-screen bg-gray-50 px-6 py-12">
+      <div className="max-w-3xl mx-auto space-y-6 bg-white p-6 rounded-lg border">
 
-        <h1 className="text-2xl font-semibold text-gray-900">
+        <h1 className="text-2xl font-bold text-gray-900">
           Dashboard
         </h1>
 
-        <p className="mt-2 text-gray-600">
-          Welcome, {user.email}
-        </p>
-
-        <div className="mt-8 flex gap-4 flex-wrap">
+        <div className="flex gap-4">
           <Link
             href="/profile"
-            className="px-6 py-3 bg-gray-900 text-white rounded-md
-                       transition hover:bg-gray-700"
+            className="px-4 py-2 bg-gray-900 text-white rounded-md"
           >
-            Go to Profile
+            Profile
+          </Link>
+
+          <Link
+            href="/admin"
+            className="px-4 py-2 bg-blue-600 text-white rounded-md"
+          >
+            Admin Dashboard
           </Link>
 
           <button
             onClick={() => signOut(auth)}
-            className="px-6 py-3 border border-gray-300 text-gray-700 rounded-md
-                       transition hover:bg-gray-100"
+            className="px-4 py-2 border rounded-md"
           >
             Logout
           </button>

@@ -1,172 +1,325 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { auth } from "@/lib/firebase";
-import { onAuthStateChanged } from "firebase/auth";
 import { useRouter } from "next/navigation";
+import { auth, db } from "@/lib/firebase";
+import { onAuthStateChanged } from "firebase/auth";
+import { ref, set, push, onValue } from "firebase/database";
 
 export default function ProfilePage() {
   const router = useRouter();
 
+  // auth & loading
   const [user, setUser] = useState(null);
-  const [name, setName] = useState("");
-  const [skillInput, setSkillInput] = useState("");
-  const [skills, setSkills] = useState([]);
+  const [authChecking, setAuthChecking] = useState(true);
 
-  // Protect route
+  // profile
+  const [name, setName] = useState("");
+  const [photo, setPhoto] = useState("");
+
+  // skills
+  const [skillInput, setSkillInput] = useState("");
+  const [skills, setSkills] = useState([]); // array of { name, verified }
+
+  // certificates (link based)
+  const [certSkill, setCertSkill] = useState("");
+  const [certURL, setCertURL] = useState("");
+  const [certificates, setCertificates] = useState([]); // array
+
+  // UI state
+  const [loadingAction, setLoadingAction] = useState(false);
+  const [message, setMessage] = useState(""); // success/info
+  const [error, setError] = useState(""); // error messages
+
+  // ----------------- Auth listener -----------------
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      if (!currentUser) {
+    const unsub = onAuthStateChanged(auth, (u) => {
+      if (!u) {
+        setAuthChecking(false);
         router.push("/login");
-      } else {
-        setUser(currentUser);
-        setName(currentUser.displayName || "");
+        return;
       }
+      setUser(u);
+      setAuthChecking(false);
     });
 
-    return () => unsubscribe();
+    return () => unsub();
   }, [router]);
 
-  if (!user) return null;
+  // ----------------- Load DB data -----------------
+  useEffect(() => {
+    if (!user) return;
 
-  // Add skill locally (no DB yet)
-  const handleAddSkill = () => {
-    if (!skillInput.trim()) return;
-    setSkills([...skills, { name: skillInput, status: "Pending" }]);
-    setSkillInput("");
+    const userRef = ref(db, `users/${user.uid}`);
+    const certRef = ref(db, `certificates/${user.uid}`);
+
+    const offUser = onValue(userRef, (snap) => {
+      const data = snap.val() || {};
+      setName(data.name || "");
+      setPhoto(data.photo || "");
+      // if skills saved as objects, convert to array; if strings, keep them consistent
+      const rawSkills = data.skills || {};
+      // rawSkills may be { id: "React" } or { id: { name, verified } }
+      const skillArr = Object.values(rawSkills).map((s) =>
+        typeof s === "string" ? { name: s, verified: false } : { name: s.name, verified: !!s.verified }
+      );
+      setSkills(skillArr);
+    });
+
+    const offCerts = onValue(certRef, (snap) => {
+      const data = snap.val() || {};
+      const certArr = Object.values(data).map((c) => ({
+        skill: c.skill,
+        url: c.url,
+        status: c.status || "pending",
+        uploadedAt: c.uploadedAt || 0,
+      }));
+      setCertificates(certArr.reverse()); // newest first
+    });
+
+    return () => {
+      offUser();
+      offCerts();
+    };
+  }, [user]);
+
+  // helper to clear messages after a short while
+  useEffect(() => {
+    if (!message && !error) return;
+    const t = setTimeout(() => {
+      setMessage("");
+      setError("");
+    }, 5000);
+    return () => clearTimeout(t);
+  }, [message, error]);
+
+  // ----------------- Actions -----------------
+  const saveProfile = async () => {
+    if (!user) return;
+    setLoadingAction(true);
+    setError("");
+    setMessage("");
+    try {
+      await set(ref(db, `users/${user.uid}`), {
+        email: user.email,
+        name: name || "",
+        photo: photo || "",
+      });
+      setMessage("Profile saved ✅");
+    } catch (err) {
+      console.error(err);
+      setError("Failed to save profile. Check DB rules.");
+    } finally {
+      setLoadingAction(false);
+    }
   };
 
+  const addSkill = async () => {
+    if (!skillInput.trim() || !user) return;
+    setLoadingAction(true);
+    setError("");
+    setMessage("");
+    try {
+      // push an object with name + verified
+      await push(ref(db, `users/${user.uid}/skills`), {
+        name: skillInput.trim(),
+        verified: false,
+      });
+      setSkillInput("");
+      setMessage("Skill added");
+    } catch (err) {
+      console.error(err);
+      setError("Failed to add skill. Check DB rules.");
+    } finally {
+      setLoadingAction(false);
+    }
+  };
+
+  const submitCertificate = async () => {
+    if (!certSkill.trim() || !certURL.trim() || !user) {
+      setError("Please provide skill name and certificate URL");
+      return;
+    }
+    setLoadingAction(true);
+    setError("");
+    setMessage("");
+    try {
+      await push(ref(db, `certificates/${user.uid}`), {
+        skill: certSkill.trim(),
+        url: certURL.trim(),
+        status: "pending",
+        uploadedAt: Date.now(),
+      });
+      setCertSkill("");
+      setCertURL("");
+      setMessage("Certificate submitted for verification ⏳");
+    } catch (err) {
+      console.error(err);
+      setError("Failed to submit certificate. Check DB rules.");
+    } finally {
+      setLoadingAction(false);
+    }
+  };
+
+  // ----------------- Render -----------------
+  if (authChecking) {
+    return (
+      <main className="min-h-screen flex items-center justify-center bg-white">
+        <p className="text-gray-700">Checking authentication...</p>
+      </main>
+    );
+  }
+
+  if (!user) return null; // redirecting
+
   return (
-    <main className="min-h-screen bg-gray-50 px-6 py-16">
-      <div className="max-w-4xl mx-auto space-y-8">
+    <main className="min-h-screen bg-white px-6 py-12">
+      <div className="max-w-3xl mx-auto space-y-8">
 
-        {/* PROFILE CARD */}
-        <div className="bg-white border border-gray-200 rounded-lg p-6 flex items-center gap-6">
-          <img
-            src="https://i.pravatar.cc/100"
-            alt="Profile"
-            className="w-20 h-20 rounded-full object-cover"
-          />
-
-          <div className="flex-1">
-            <input
-              type="text"
-              placeholder="Your name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-md
-                         text-gray-900 placeholder-gray-400
-                         focus:outline-none focus:ring-2 focus:ring-gray-900"
+        {/* Profile card */}
+        <section className="bg-white border rounded-lg p-6 shadow-sm">
+          <div className="flex items-center gap-6">
+            <img
+              src={photo || "https://i.pravatar.cc/150?img=12"}
+              alt="profile"
+              className="w-20 h-20 rounded-full object-cover"
             />
 
-            <p className="mt-2 text-sm text-gray-600">
-              {user.email}
-            </p>
+            <div className="flex-1">
+              <label className="block text-sm font-medium text-gray-700">Name</label>
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Your name"
+                className="mt-1 w-full px-4 py-2 border border-gray-300 rounded-md
+                           bg-white text-gray-900 placeholder-gray-400
+                           focus:outline-none focus:ring-2 focus:ring-gray-900"
+              />
 
-            <button
-              type="button"
-              className="mt-4 px-5 py-2 bg-gray-900 text-white rounded-md
-                         hover:bg-gray-700 transition"
-            >
-              Save Profile
-            </button>
+              <label className="block text-sm font-medium text-gray-700 mt-3">Email</label>
+              <p className="mt-1 text-gray-700">{user.email}</p>
+
+              <div className="mt-4 flex gap-3">
+                <button
+                  onClick={saveProfile}
+                  disabled={loadingAction}
+                  className="px-4 py-2 bg-gray-900 text-white rounded-md disabled:opacity-50"
+                >
+                  {loadingAction ? "Saving..." : "Save Profile"}
+                </button>
+              </div>
+            </div>
           </div>
-        </div>
+        </section>
 
-        {/* SKILLS SECTION */}
-        <div className="bg-white border border-gray-200 rounded-lg p-6">
-          <h2 className="text-lg font-semibold text-gray-900">
-            Your Skills
-          </h2>
+        {/* Skills */}
+        <section className="bg-white border rounded-lg p-6 shadow-sm">
+          <h2 className="text-lg font-semibold text-gray-900">Your Skills</h2>
 
           <div className="mt-4 flex gap-3">
             <input
-              type="text"
-              placeholder="Add a skill (e.g. React)"
               value={skillInput}
               onChange={(e) => setSkillInput(e.target.value)}
+              placeholder="Add a skill (e.g. React)"
               className="flex-1 px-4 py-2 border border-gray-300 rounded-md
-                         text-gray-900 placeholder-gray-400
+                         bg-white text-gray-900 placeholder-gray-400
                          focus:outline-none focus:ring-2 focus:ring-gray-900"
             />
-
             <button
-              type="button"
-              onClick={handleAddSkill}
-              className="px-5 py-2 bg-gray-900 text-white rounded-md
-                         hover:bg-gray-700 transition"
+              onClick={addSkill}
+              disabled={loadingAction}
+              className="px-4 py-2 bg-gray-900 text-white rounded-md disabled:opacity-50"
             >
-              Add
+              {loadingAction ? "Adding..." : "Add"}
             </button>
           </div>
 
-          {/* Skills List */}
-          {skills.length === 0 ? (
-            <p className="mt-4 text-sm text-gray-500">
-              No skills added yet.
-            </p>
-          ) : (
-            <ul className="mt-6 space-y-3">
-              {skills.map((skill, index) => (
+          <ul className="mt-4 space-y-2">
+            {skills.length === 0 ? (
+              <li className="text-sm text-gray-600">No skills added yet.</li>
+            ) : (
+              skills.map((s, i) => (
                 <li
-                  key={index}
-                  className="flex items-center justify-between
-                             px-4 py-2 border border-gray-200 rounded-md"
+                  key={i}
+                  className="flex justify-between items-center px-4 py-2 border rounded-md bg-gray-50"
                 >
-                  <span className="text-gray-900">
-                    {skill.name}
-                  </span>
-
-                  <span className="text-sm text-orange-600">
-                    {skill.status}
+                  <span className="text-gray-900">{s.name}</span>
+                  <span
+                    className={`text-sm font-medium ${
+                      s.verified ? "text-green-600" : "text-orange-600"
+                    }`}
+                  >
+                    {s.verified ? "Verified" : "Pending"}
                   </span>
                 </li>
-              ))}
-            </ul>
-          )}
-        </div>
+              ))
+            )}
+          </ul>
+        </section>
 
-        {/* CERTIFICATE UPLOAD SECTION */}
-        <div className="bg-white border border-gray-200 rounded-lg p-6">
-          <h2 className="text-lg font-semibold text-gray-900">
-            Skill Certificates
-          </h2>
+        {/* Certificates (URL based) */}
+        <section className="bg-white border rounded-lg p-6 shadow-sm">
+          <h2 className="text-lg font-semibold text-gray-900">Certificates</h2>
 
-          <p className="mt-1 text-sm text-gray-600">
-            Upload proof of your skills for verification.
-          </p>
-
-          <div className="mt-4 space-y-4">
+          <div className="mt-4 space-y-3">
             <input
-              type="text"
+              value={certSkill}
+              onChange={(e) => setCertSkill(e.target.value)}
               placeholder="Skill name (e.g. React)"
               className="w-full px-4 py-2 border border-gray-300 rounded-md
-                         text-gray-900 placeholder-gray-400
+                         bg-white text-gray-900 placeholder-gray-400
                          focus:outline-none focus:ring-2 focus:ring-gray-900"
             />
 
             <input
-              type="url"
-              placeholder="Certificate URL (PDF / image link)"
+              value={certURL}
+              onChange={(e) => setCertURL(e.target.value)}
+              placeholder="Certificate URL (Drive / PDF / image link)"
               className="w-full px-4 py-2 border border-gray-300 rounded-md
-                         text-gray-900 placeholder-gray-400
+                         bg-white text-gray-900 placeholder-gray-400
                          focus:outline-none focus:ring-2 focus:ring-gray-900"
             />
 
-            <button
-              type="button"
-              className="px-5 py-2 bg-gray-900 text-white rounded-md
-                         hover:bg-gray-700 transition"
-            >
-              Upload Certificate
-            </button>
+            <div className="flex gap-3">
+              <button
+                onClick={submitCertificate}
+                disabled={loadingAction}
+                className="px-6 py-2 bg-gray-900 text-white rounded-md disabled:opacity-50"
+              >
+                {loadingAction ? "Submitting..." : "Submit for verification"}
+              </button>
+            </div>
+
+            {message && <p className="text-sm font-medium text-gray-900">{message}</p>}
+            {error && <p className="text-sm text-red-600">{error}</p>}
           </div>
 
-          <p className="mt-4 text-sm text-gray-500">
-            Uploaded certificates will be reviewed by admins.
-          </p>
-        </div>
-
+          <ul className="mt-6 space-y-2">
+            {certificates.length === 0 ? (
+              <li className="text-sm text-gray-600">No certificates submitted yet.</li>
+            ) : (
+              certificates.map((c, i) => (
+                <li
+                  key={i}
+                  className="flex justify-between items-center px-4 py-2 border rounded-md bg-gray-50"
+                >
+                  <div>
+                    <div className="text-gray-900 font-medium">{c.skill}</div>
+                    <a
+                      className="text-sm text-blue-600 underline"
+                      href={c.url}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      View certificate
+                    </a>
+                  </div>
+                  <div className="text-sm font-medium text-orange-600">{c.status}</div>
+                </li>
+              ))
+            )}
+          </ul>
+        </section>
       </div>
     </main>
   );

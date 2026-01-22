@@ -5,7 +5,6 @@ import Link from "next/link";
 import { auth } from "@/lib/firebase";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 
-const ADMIN_EMAIL = "admin@gmail.com"; // 👈 define admin email
 
 export default function Home() {
   const [user, setUser] = useState(null);
@@ -95,6 +94,12 @@ export default function Home() {
                   >
                     Register
                   </Link>
+                  <Link
+  href="/employer"
+  className="relative text-gray-600 hover:text-gray-900"
+>
+  Employer View
+</Link>
                 </>
               )}
             </div>

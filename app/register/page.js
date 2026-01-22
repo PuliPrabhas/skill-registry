@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createUserWithEmailAndPassword } from "firebase/auth";
-import { auth } from "@/lib/firebase";
+import { ref, set } from "firebase/database";
+import { auth, db } from "@/lib/firebase";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -19,10 +20,31 @@ export default function RegisterPage() {
     setLoading(true);
 
     try {
-      await createUserWithEmailAndPassword(auth, email, password);
+      const userCredential = await createUserWithEmailAndPassword(
+        auth,
+        email,
+        password
+      );
+
+      const user = userCredential.user;
+
+      // Save user profile in Realtime Database
+      await set(ref(db, "users/" + user.uid), {
+        email: user.email,
+        role: "user",
+        verified: false,
+        createdAt: Date.now(),
+      });
+
       router.push("/login");
     } catch (err) {
-      setError(err.message);
+      if (err.code === "auth/email-already-in-use") {
+        setError("This email is already registered.");
+      } else if (err.code === "auth/weak-password") {
+        setError("Password should be at least 6 characters.");
+      } else {
+        setError("Failed to create account. Please try again.");
+      }
     } finally {
       setLoading(false);
     }
@@ -31,6 +53,7 @@ export default function RegisterPage() {
   return (
     <main className="min-h-screen flex items-center justify-center bg-gray-50 px-6">
       <div className="w-full max-w-md bg-white p-8 rounded-lg border border-gray-200">
+        
         <h1 className="text-2xl font-semibold text-gray-900">
           Create your account
         </h1>
@@ -40,6 +63,7 @@ export default function RegisterPage() {
         </p>
 
         <form onSubmit={handleRegister} className="mt-6 space-y-4">
+          
           <input
             type="email"
             placeholder="Email address"
@@ -47,16 +71,18 @@ export default function RegisterPage() {
             onChange={(e) => setEmail(e.target.value)}
             required
             className="w-full px-4 py-3 border border-gray-300 rounded-md
+                       bg-white text-gray-900 placeholder-gray-400
                        focus:outline-none focus:ring-2 focus:ring-gray-900"
           />
 
           <input
             type="password"
-            placeholder="Password"
+            placeholder="Password (min 6 characters)"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
             className="w-full px-4 py-3 border border-gray-300 rounded-md
+                       bg-white text-gray-900 placeholder-gray-400
                        focus:outline-none focus:ring-2 focus:ring-gray-900"
           />
 
@@ -70,10 +96,12 @@ export default function RegisterPage() {
             type="submit"
             disabled={loading}
             className="w-full py-3 bg-gray-900 text-white rounded-md
-                       transition hover:bg-gray-700 disabled:opacity-50"
+                       transition hover:bg-gray-700
+                       disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? "Creating account..." : "Register"}
           </button>
+
         </form>
       </div>
     </main>

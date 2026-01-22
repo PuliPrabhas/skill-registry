@@ -1,11 +1,8 @@
 "use client";
-import { ADMIN_EMAIL } from "@/app/constants/admin";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { auth } from "@/lib/firebase";
-import { onAuthStateChanged, signOut } from "firebase/auth";
-
-
+import { onAuthStateChanged, signOut } from "firebase/auth"
 export default function Home() {
   const [user, setUser] = useState(null);
   const [showLearnMore, setShowLearnMore] = useState(false);
@@ -40,7 +37,7 @@ export default function Home() {
               {user ? (
                 <>
                   {/* Admin link (ONLY for admin) */}
-                  {user.email === ADMIN_EMAIL && (
+                  {user.email === "prabhaspuli152@gmail.com" && (
                     <Link
                       href="/admin"
                       className="relative text-gray-600 transition hover:text-gray-900

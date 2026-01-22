@@ -1,5 +1,4 @@
 "use client";
-
 import { useEffect, useState } from "react";
 import { db } from "@/lib/firebase";
 import { ref, onValue } from "firebase/database";
@@ -8,29 +7,36 @@ export default function EmployerPage() {
   const [profiles, setProfiles] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const usersRef = ref(db, "users");
+ useEffect(() => {
+  const usersRef = ref(db, "users");
 
-    onValue(usersRef, (snapshot) => {
-      if (!snapshot.exists()) {
-        setProfiles([]);
-        setLoading(false);
-        return;
-      }
+  onValue(usersRef, (snapshot) => {
+    console.log("SNAPSHOT:", snapshot.val());
 
-      const usersData = snapshot.val();
-
-      const verifiedProfiles = Object.keys(usersData)
-        .map((uid) => ({
-          uid,
-          ...usersData[uid],
-        }))
-        .filter((user) => user.verified === true);
-
-      setProfiles(verifiedProfiles);
+    if (!snapshot.exists()) {
+      console.log("NO USERS FOUND");
+      setProfiles([]);
       setLoading(false);
-    });
-  }, []);
+      return;
+    }
+
+    const usersData = snapshot.val();
+
+    const verifiedProfiles = Object.keys(usersData)
+  .map((uid) => ({
+    uid,
+    ...usersData[uid],
+  }))
+  .filter((user) => user.verified === true)
+  .sort((a, b) => (b.verifiedAt || 0) - (a.verifiedAt || 0));
+
+    console.log("VERIFIED PROFILES:", verifiedProfiles);
+
+    setProfiles(verifiedProfiles);
+    setLoading(false);
+  });
+}, []);
+
 
   return (
     <main className="min-h-screen bg-gray-50 px-6 py-12">

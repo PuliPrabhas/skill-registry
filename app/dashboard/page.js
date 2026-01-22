@@ -1,4 +1,13 @@
 "use client";
+import Navbar from "@/components/Navbar";
+export default function ProfilePage() {
+  return (
+    <>
+      <Navbar />
+      {/* rest of profile page */}
+    </>
+  );
+}
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
